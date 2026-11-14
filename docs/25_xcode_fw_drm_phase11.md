@@ -127,11 +127,13 @@ scramble_mode (SM): 0 NONE、1 AES_ECB_ENC、2 AES_CBC_ENC、3 AES_CTR_ENC、4 C
 
 ### 3.4 CW/IV の選択と鍵ストア投入 (ジャンプ表 #1)
 
-共通部 (0xBF8CC0) で、記述子へ載せるバイトを選ぶ:
+共通部 (0xBF8CC0) で、投入先スロットと記述子鍵ワードの元になる選択値を決める:
 
-- IV バイト: SF bit6 (IV_AS_INDEX) がクリアなら `[req+0x4C]` (IV_seed[0])、セットなら状態ブロックの語 `[handle + 0x8B8]`。
-- CW バイト: SF bit5 (CW_AS_INDEX) がクリアなら `[req+0x34]` (control_words[0])、セットならバイト `[handle + 0x8B0]`。
-- CW2 側: residue 系では `[req+0x6C]` (control_words2[0])、非 residue では語 `[handle + 0x8B4]` (bit5 クリア時)、bit5 セット時は `[handle + 0x8B4]`。
+- IV スロット: SF bit6 (IV_AS_INDEX) がセットならバイト `[req+0x4C]` (IV_seed[0]、それ自体がスロット番号を兼ねる)、クリアなら状態ブロックの語 `[handle + 0x8B8]`。
+- CW スロット: SF bit5 (CW_AS_INDEX) がセットならバイト `[req+0x34]` (control_words[0])、クリアなら状態ブロックの語 `[handle + 0x8B0]`。
+- CW2 スロット: SF bit5 がクリアなら状態ブロックの語 `[handle + 0x8B4]`。セット時はモード {0x12, 0x13, 0x1B, 0x14, 0x15, 0x1A} ではバイト `[req+0x6C]` (control_words2[0])、それ以外のモードでは状態ブロックの語 `[handle + 0x8B4]`。
+
+(2026-11-15 第13段訂正: 本節の初版は AS_INDEX の極性を逆に記していた。第12段 [docs/26](26_xcode_fw_drm_phase12.md) §9 で訂正の判定は出ていたが本文への反映が漏れていたため、本段で主 FW 並行実装 `0x22F9E0` の選択部を独立に実読して裏付けたうえで本文を修正した。経緯は [docs/27](27_xcode_fw_drm_phase13.md) §3.2。)
 
 状態ブロックの +0x8B0 / +0x8B4 / +0x8B8 は、ステージングした要求コピー (+0x7F4 から 0xBC バイト = +0x8B0 まで) の**直後**に位置する 3 スロットで、本ハンドラは読み出すのみで書かない。「index として使う」場合の解決済み値の置き場であり、書き手は本ハンドラの外にある (未確定、§11)。
 
