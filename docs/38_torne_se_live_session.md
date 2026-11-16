@@ -44,13 +44,14 @@
 ### 3.5 視聴機能そのものの動作 (事実)
 
 - ペアリング、TV ライブ視聴、録画番組の再生はいずれも正常に動作した。資格情報の初期化が走らなくても、視聴系の操作は成立している。
+- この事実の構造的な裏付けは [docs/45](45_torne_credential_reinvestigation.md) で得られた: プレイヤ側 AVBase の CDtcpIp スタックは証明書・鍵を自前では保持せず (docs/21 §8 / docs/33 §12 の未調査事項は「AVBase 自身は資格情報源を持たない」という形で決着)、AKE 暗号は PvrBgApp (DEWEY) のみに実装される。あわせて LICENCEDIR は DTCP と無関係の権利管理であることが分かった (docs/45 §3)。
 
 ## 4. 未確定
 
 - 資産フロー (ライセンス取得) の発火条件。
 - mobileId の取得 (発行タイミングと永続化形態は docs/36 以来未確定のまま)。
 - G 導出の実装経路 (3.3 の否定結果により CommonCrypto 説は外れた)。
-- docs/36 の service / account 割り当ての訂正要否 (3.2)。
+- docs/36 の service / account 割り当ての訂正要否 (3.2)。→ [docs/45](45_torne_credential_reinvestigation.md) §6 で本書の実機の向き (service = `torne moible`、account = `com.playstation.tornemobile.storage`) が正と決着し、docs/36 §5 を訂正済み。
 
 ## 5. 関連
 
