@@ -1,5 +1,7 @@
 # 42. torne 自作スマホクライアント (HomeBrew エディション) 計画書 — 操作系 v1 の範囲・技術方式・フェーズ
 
+> **移管注記 (2026-11-16)**: 本書は TorneMobileHomeBrew リポジトリの docs/plan.md へ移管した。以後の計画の正本は移管先であり、本書は移管時点の記録として残す。
+
 **位置づけ**: torne mobile の後継となる自作スマホクライアント (正式名称は「torne mobile HomeBrew エディション」、2026-11-16 本人決定、§9) の**計画書**。実装はまだ行わない。本書は計画と、その根拠となる既存の到達点 ([21](21_torne_mobile_ipa_static_analysis.md)・[32](32_pydtcpip_survey.md)・[37](37_pydtcpip_live_verification.md)・[41](41_torne_vita_fagdec_eboot_analysis.md)) の対応づけ、および本人決定事項の記録である。
 
 **前提となる本人決定 (2026-11-16)**:
