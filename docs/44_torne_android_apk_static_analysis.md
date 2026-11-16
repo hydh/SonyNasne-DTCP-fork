@@ -85,3 +85,7 @@ Vita 2.02 の 56 件との関係では、Android の集合は Vita の 56 件か
 
 バックグラウンド側にも次
 ...[truncated 6593 chars]
+
+## 訂正 (docs/46)
+
+§2.1 の WebAPI パス文字列の件数と内訳には誤りがあった。docs/46 の再走査 (本書と同じ libPvrMain_plus.so 実物) では 65 件が数えられ、「iOS のみ」とした `schedule/reservedListGet2` と `status/liveStreamPCRGet2` の両文字列が libPvrMain_plus.so 内に存在した。したがって内訳は「Android の 65 件は iOS の 62 件を全て含み、Android のみは chEpg 群 3 件のみ、Vita 2.02 の 56 件も文字列レベルでは全て含む」が正しい。両文字列が実 endpoint として呼ばれるかは未確定のままである。詳細は [46](46_torne_codex_work_review.md) §2.1 を参照。
