@@ -103,3 +103,31 @@ marnux (有線 LAN) から `tools/dtcpip-rescue/rescue.py fetch --force` で再�
 - 既存のデータ点との整合: 初回取得の「5分でみんなの手話(4)」(DR、494,434,560 バイト、呼び出し全体で約68秒) は、転送約45秒 (11.1 MB/s 換算) + AKE・一覧・後処理で説明できる範囲にある。09:55 の手話ニュース845 の実走ログ (転送 2分28秒、11.1 MB/s) も今回の再計測 (2分26秒) とほぼ一致する。
 - §5 の GUI 経由の観測 (60秒で 917,504,000 バイト進行、約15.3 MB/s) は開始直後の短い窓での瞬時値で、完走までの平均を測った今回の3件とは測り方が異なる。所要時間の目安には完走平均の 11.1 MB/s を使うのが安全。
 - 再取得した「ふしぎエンドレス」の SHA-256 (`e90c3375…`) は初回取得時と完全一致した。
+
+## 8. 手動登録 (アドレス直接指定) の追加と Mac / Tailscale 実走 (2026-11-17 追加)
+
+本人の使い方として「SSDP は使わない、手動登録」が示されたため、SSDP 発見を経由せず nasne のアドレスを直接指定する経路を追加した (実装 commit `30b4ddd`)。
+
+### 8.1 動機
+
+- 列挙は pydtcpip の SSDP 発見が前提だったが、SSDP のマルチキャストはルーテッド経路 (Tailscale のサブネットルーティング等) を越えられない。Mac (192.168.1.0/24 側) からは nasne (192.168.11.129) のポート 58888 へのユニキャスト到達はあるのに、`list` は "no media servers found" になっていた。
+- Browse 自体はユニキャスト HTTP なので、発見だけを直接指定に置き換えれば経路を越えて使える。torne mobile HB で手動アドレス登録が主経路の一つになっているのと同じ思想。
+
+### 8.2 実装
+
+- pydtcpip の `DLNAClient.get_server(location)` (SSDP の LOCATION から MediaServer を作る公開メソッド) を使い、description の取得だけを直接指定に置き換えた。nasne の description URL は `http://<host>:58888/` (SSDP 経路で得られる location と同一)。
+- `list_recordings.py`: `--host` を追加 (既定は環境変数 `RESCUE_HOST`)。指定形式はホスト名 / IP (ポート 58888 を補う)、`host:port`、description URL そのものの3形。到達不能なアドレスは traceback でなく明示メッセージで終了コード 1。
+- `rescue.py`: `--host` / `RESCUE_HOST` を共通オプションとして追加し、`list` / `fetch` / `fetch-all` の全てで効くようにした。`fetch` は一覧取得時の `server.location` を pydtcpip `stream --server` に渡すため、手動指定の一覧から取得すれば転送先も同じ nasne になる。
+- `rescue_gui.py`: 「nasne アドレス (手動指定)」欄を追加 (空欄 = SSDP 自動発見)。入力値はデータディレクトリの `gui_settings.json` に保存され、次回起動時に読み戻される。資格情報には一切触れない (保存されるのはアドレスのみ)。
+
+### 8.3 検証
+
+- **marnux (有線 LAN)**: `rescue.py list --host 192.168.11.129` の結果が SSDP 経路と完全一致 (サーバー情報・録画 8 件の content_id とタイトル)。`RESCUE_HOST` 指定、`host:port` 形、URL 形でも同一結果。到達不能アドレス (192.0.2.1) は明示エラーで終了コード 1 を確認。
+- **marnux GUI (Xvfb ハーネス)**: アドレス欄への入力 → 設定保存 (`gui_settings.json`) → 再起動での読み戻し → GUI 経由の列挙 (手動指定で 8 件) を確認。
+- **Mac (192.168.1.0/24 側、Tailscale サブネット経由)**: SSDP 経路は従来通り発見不可 (終了コード 1、"no media servers found")。一方 `--host 192.168.11.129` では列挙が成功し、録画 8 件の content_id とタイトルが marnux の結果と完全一致した。**発見を越えられない経路でも手動登録で列挙できることを実証。**
+- Mac でも発見プロファイル名は `sie_nasne` でなく `nasne` と表示された (§6 の Windows の現象と同件。列挙内容に差はなく、原因は引き続き未確定)。
+
+### 8.4 残件への影響
+
+- §6 の「macOS での実機確認」は、CLI の列挙については本節で解消した (GUI の起動確認も別途済み)。GUI の操作を伴う列挙・fetch の完走確認、`fetch-all` の実走は引き続き残件。
+- fetch の手動指定での実走 (AKE を伴うもの) は未実施。一覧取得と同じサーバー location を使う構造であり、LAN では SSDP 経路で実証済みの転送と同一経路になる。

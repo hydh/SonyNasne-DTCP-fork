@@ -33,7 +33,8 @@ tools/dtcpip-rescue/
   README.md              このファイル
   rescue.py              ドライバ (CLI: list / fetch / fetch-all)
   list_recordings.py     列挙 (資格情報なし)。pydtcpip の DLNA スタックで
-                         SSDP 発見 + Browse し、録画一覧を JSON で出す
+                         SSDP 発見 (またはアドレス手動指定) + Browse し、
+                         録画一覧を JSON で出す
   rescue_gui.py          GUI (Tkinter、標準ライブラリのみ)
   credentials.env.example 資格情報の空テンプレート
   data/                  (実行時に作成) credentials.env と srm.bin
@@ -56,6 +57,7 @@ out/
 data/
   credentials.env        資格情報 (本人のみが書く)
   srm.bin                初回 AKE 成功時に pydtcpip が自動保存する SRM
+  gui_settings.json      GUI が保存する nasne アドレス (手動指定の値)
 ```
 
 ## 転送方式について
@@ -87,9 +89,17 @@ uv sync            # .venv ができる (uv が無い場合は venv + pip でも
 | 出力先 | `--out-dir` | `RESCUE_OUT_DIR` | `<base>/out` |
 | ログ出力先 | `--logs-dir` | `RESCUE_LOGS_DIR` | `<base>/logs` |
 | pydtcpip の場所 | `--pydtcpip-home` | `PYDTCPIP_HOME` | `.venv` を含む pydtcpip のチェックアウト (POSIX は `bin/`、Windows は `Scripts\` のレイアウトに対応)。見つからない場合は PATH 上の `pydtcpip` コマンド、または実行中の Python から import できる pydtcpip を使う |
+| nasne のアドレス (手動登録) | `--host` | `RESCUE_HOST` | なし (SSDP で自動発見) |
 
 `<base>` は、従来の作業領域レイアウトが存在するマシンではそちら
 (互換のための既定)、なければこのツール自身のディレクトリ。
+
+`--host` を指定すると **手動登録** になり、SSDP のマルチキャスト発見を
+使わず、`http://<アドレス>:58888/` の device description を直接取得して
+Browse する。VPN やサブネットルーティング越しなど、SSDP が届かない
+経路でも使える。`fetch` / `fetch-all` も一覧取得と同じサーバーを対象に
+するため、同じ指定が効く。アドレスはホスト名 / IP のほか、`host:port` や
+description の URL そのものでも書ける。
 
 資格情報ファイルは、空テンプレート `credentials.env.example` を
 `data/credentials.env` にコピーし、利用者本人が値を書く
@@ -109,6 +119,14 @@ python3 rescue.py fetch --id <content_id>
 
 # 全件取得
 python3 rescue.py fetch-all
+```
+
+SSDP が届かない経路 (VPN 越しなど) では、アドレスを手動指定する
+(環境変数 `RESCUE_HOST` でも指定できる):
+
+```bash
+python3 rescue.py list --host 192.168.11.129
+python3 rescue.py fetch --id <content_id> --host 192.168.11.129
 ```
 
 - 既に manifest にある録画はスキップされる。再取得は `--force`。
@@ -153,13 +171,18 @@ py rescue_gui.py
 
 - Linux ではディストリビューションによって `python3-tk` パッケージが
   別途必要な場合がある。
-- macOS でも同じコードで動作するが、実機での動作確認は行っていない。
+- macOS でも同じコードで動作する。GUI の起動と、CLI の手動指定での
+  列挙は Mac 実機で確認済み (詳細は docs/49 §8)。
 
 ### 画面の構成
 
 - **資格情報ファイルの欄**: `credentials.env` のパス表示と、配置状態の表示。
   「変更…」でファイルを選んでパスを切り替え、「フォルダを開く」でそのフォルダを
   エクスプローラ / Finder / ファイルマネージャで開く。
+- **nasne アドレス (手動指定) の欄**: SSDP の自動発見を使わず、nasne の
+  アドレスを直接指定する。空欄なら自動発見。VPN 越しなど SSDP の
+  マルチキャストが届かない経路で使う。入力した値は保存され (データ
+  ディレクトリの `gui_settings.json`)、次回起動時もそのまま使われる。
 - **「録画一覧を取得」ボタン**: nasne を発見し、録画一覧を表に表示する
   (資格情報は不要)。接続できるとサーバー名がボタンの右に表示される。
 - **録画一覧の表**: タイトル / 日時 / チャンネル / 長さ / サイズ / 残コピー。
@@ -176,7 +199,8 @@ py rescue_gui.py
    表示されているパスの場所に `credentials.env` を置く
    (「フォルダを開く」がそのフォルダを開く)。置き場所を変えたい場合は
    「変更…」でファイルを選ぶ。
-2. 「録画一覧を取得」を押す。
+2. 「録画一覧を取得」を押す (SSDP が届かない環境では、先に nasne
+   アドレスの欄へアドレスを入れておく)。
 3. 表から救出したい録画を選び、「選択した録画を救出」を押す。
    進捗バーとログで進行を確認する。
 4. 完了すると manifest の表に結果が追加される。必要なら「ハッシュ検証」で
