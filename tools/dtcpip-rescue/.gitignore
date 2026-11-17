@@ -1,0 +1,6 @@
+# Runtime data of the rescue tool -- never commit these.
+# data/ holds the owner's credentials.env and pydtcpip's srm.bin.
+data/
+out/
+logs/
+__pycache__/
