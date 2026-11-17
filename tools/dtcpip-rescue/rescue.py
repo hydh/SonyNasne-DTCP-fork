@@ -206,8 +206,7 @@ def recording_filename(recording: dict) -> str:
     return f"{sanitize_id(content_id)}-{sanitize_title(recording['title'])}.ts"
 
 
-def run_listing(config: Config) -> dict:
-    """Run the enumeration script and save the listing under out/listings/."""
+def _pydtcpip_python_or_exit(config: Config) -> Path:
     python = pydtcpip_python(config)
     if python is None:
         raise SystemExit(
@@ -215,12 +214,24 @@ def run_listing(config: Config) -> dict:
             'Set PYDTCPIP_HOME to a pydtcpip checkout (with .venv) '
             'or install pydtcpip for this interpreter.'
         )
-    config.listings_dir.mkdir(parents=True, exist_ok=True)
+    return python
+
+
+def _list_command(config: Config, python: Path, probe: bool = False) -> list[str]:
     command = [str(python), str(LIST_SCRIPT)]
+    if probe:
+        command.append('--probe')
     if config.host:
         command += ['--host', config.host]
+    return command
+
+
+def run_listing(config: Config) -> dict:
+    """Run the enumeration script and save the listing under out/listings/."""
+    python = _pydtcpip_python_or_exit(config)
+    config.listings_dir.mkdir(parents=True, exist_ok=True)
     proc = subprocess.run(
-        command,
+        _list_command(config, python),
         capture_output=True,
         encoding='utf-8',
         errors='replace',
@@ -233,6 +244,28 @@ def run_listing(config: Config) -> dict:
     path = config.listings_dir / f'{stamp()}.json'
     path.write_text(proc.stdout, encoding='utf-8')
     return listing
+
+
+def probe_server(config: Config) -> dict:
+    """Connection check only: locate the recorder (manual address or SSDP
+    discovery) and fetch its device description, without browsing.
+
+    Returns the server info dict. Raises SystemExit carrying the reason
+    (the enumeration script's own message) when the recorder cannot be
+    reached, so callers can show *why* the connection failed.
+    """
+    python = _pydtcpip_python_or_exit(config)
+    proc = subprocess.run(
+        _list_command(config, python, probe=True),
+        capture_output=True,
+        encoding='utf-8',
+        errors='replace',
+        env=child_env(),
+    )
+    if proc.returncode != 0:
+        lines = [line for line in proc.stderr.strip().splitlines() if line.strip()]
+        raise SystemExit(lines[-1] if lines else f'probe failed (exit {proc.returncode})')
+    return json.loads(proc.stdout)['server']
 
 
 def sha256_of(path: Path) -> str:

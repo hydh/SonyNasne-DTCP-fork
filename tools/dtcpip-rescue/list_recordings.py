@@ -10,6 +10,10 @@ description is fetched directly from the given recorder address and only
 the Browse step runs over unicast HTTP. This works across routed paths
 (VPN, subnet routing) where SSDP multicast does not reach.
 
+With `--probe`, only the connection check runs: the recorder is located
+(manual address or SSDP discovery) and its server info is printed as
+JSON, without browsing any recordings.
+
 Run with pydtcpip's venv Python so that `pydtcpip` is importable:
     <pydtcpip>/.venv/bin/python list_recordings.py [--host 192.168.11.129]
 """
@@ -21,7 +25,6 @@ import os
 import sys
 
 from pydtcpip.dlna.client import DLNAClient
-from pydtcpip.errors import DLNAError
 from pydtcpip.models import Container, Recording
 
 
@@ -117,14 +120,24 @@ def location_for_host(host: str) -> str:
     return f'http://{host}:58888/'
 
 
-async def run(timeout: float, host: str | None) -> int:
+def server_dump(server) -> dict:
+    return {
+        'friendly_name': server.description.friendly_name,
+        'manufacturer': server.description.manufacturer,
+        'model_name': server.description.model_name,
+        'profile': server.profile.name,
+        'location': server.description.location,
+    }
+
+
+async def run(timeout: float, host: str | None, probe: bool = False) -> int:
     async with DLNAClient() as dlna:
         if host:
             # Manual registration: fetch the description directly instead
             # of SSDP discovery (multicast does not cross routed paths).
             try:
                 server = await dlna.get_server(location_for_host(host))
-            except DLNAError as error:
+            except Exception as error:
                 print(f'could not reach the recorder at {host}: {error}', file=sys.stderr)
                 return 1
         else:
@@ -141,15 +154,14 @@ async def run(timeout: float, host: str | None) -> int:
                     )
                     return 1
                 server = servers[0]
+        if probe:
+            # Connection check only: report the server, skip the Browse.
+            json.dump({'server': server_dump(server)}, sys.stdout, ensure_ascii=False, indent=2)
+            sys.stdout.write('\n')
+            return 0
         recordings = await collect_recordings(server)
         result = {
-            'server': {
-                'friendly_name': server.description.friendly_name,
-                'manufacturer': server.description.manufacturer,
-                'model_name': server.description.model_name,
-                'profile': server.profile.name,
-                'location': server.description.location,
-            },
+            'server': server_dump(server),
             'recordings': [recording_dump(recording) for recording in recordings],
         }
     json.dump(result, sys.stdout, ensure_ascii=False, indent=2)
@@ -167,6 +179,12 @@ def main() -> int:
     parser = argparse.ArgumentParser(description='List recordings on the nasne (no credentials).')
     parser.add_argument('--timeout', type=float, default=5.0, help='SSDP discovery timeout in seconds')
     parser.add_argument(
+        '--probe',
+        action='store_true',
+        help='Connection check only: locate the recorder and print its '
+        'server info as JSON, without browsing recordings',
+    )
+    parser.add_argument(
         '--host',
         default=os.environ.get('RESCUE_HOST'),
         help='Recorder address for manual registration (skips SSDP discovery): '
@@ -174,7 +192,7 @@ def main() -> int:
         'device description URL. Defaults to $RESCUE_HOST.',
     )
     args = parser.parse_args()
-    return asyncio.run(run(args.timeout, args.host))
+    return asyncio.run(run(args.timeout, args.host, probe=args.probe))
 
 
 if __name__ == '__main__':

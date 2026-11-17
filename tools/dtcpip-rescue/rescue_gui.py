@@ -2,9 +2,13 @@
 """Tkinter GUI for the DTCP-IP rescue tool (stdlib only, Win/Linux/macOS).
 
 Features (kept minimal on purpose):
+  - connection check button: fetch the device description from the
+    manual address (or run SSDP discovery) and show whether the
+    recorder answered, with the reason when it did not
   - list recordings on the recorder (no credentials needed)
   - fetch selected recordings via pydtcpip `stream` (see rescue.py)
-  - progress bar (watches the .partial file size) and a log pane
+  - progress bar (watches the .partial file size) with the transfer
+    rate in decimal MB/s, and a log pane
   - manifest view with SHA-256 re-verification
   - credentials.env path display and placement status
   - manual recorder address (skips SSDP discovery, for routed paths
@@ -12,8 +16,9 @@ Features (kept minimal on purpose):
 
 The GUI follows the same rule as the CLI: it NEVER reads, prints, or
 verifies credential values. Placement status is inferred from file
-metadata only (existence and size compared with the bundled empty
-template); the credentials file itself is never opened here.
+metadata only (existence, and whether the size differs from the
+bundled empty template); the credentials file itself is never opened
+here.
 """
 
 import json
@@ -22,6 +27,7 @@ import queue
 import subprocess
 import sys
 import threading
+import time
 import tkinter as tk
 from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
@@ -61,15 +67,26 @@ def save_host(config: rescue.Config, host: str | None) -> None:
 
 
 def credentials_status(config: rescue.Config) -> str:
-    """Placement status from metadata only (the file is never opened)."""
+    """Placement status from metadata only (the file is never opened).
+
+    A placed file holds two hex values (216 characters in total), so its
+    size always differs from the bundled empty template: a hand-written
+    minimal file (just the two assignment lines) is *smaller* than the
+    comment-heavy template, and a filled-in copy of the template is
+    larger. Only an untouched copy of the template has exactly the
+    template's size. (An earlier version treated "not larger than the
+    template" as unplaced, which misreported hand-written files on a
+    fresh data directory -- found on a real Mac, 2026-11-17.)
+    """
     path = config.credentials
     if not path.exists():
         return '未配置 (ファイルがありません)'
     size = path.stat().st_size
-    template_size = TEMPLATE.stat().st_size if TEMPLATE.exists() else 0
-    if size <= template_size:
+    if size == 0:
+        return '未配置 (空ファイルです)'
+    if TEMPLATE.exists() and size == TEMPLATE.stat().st_size:
         return '未配置 (空テンプレートのまま)'
-    return '配置済み (ファイルサイズからの推定のみ。値は読んでいません)'
+    return '配置済み (ファイルサイズからの推定)'
 
 
 def format_bytes(size: int | None) -> str:
@@ -104,8 +121,11 @@ class RescueApp(tk.Tk):
         self.listing: dict | None = None
         self.recordings: dict[str, dict] = {}
         self.fetching = False
+        self.connecting = False
         self.active_partial: Path | None = None
         self.active_expected: int | None = None
+        self.fetch_started_at: float | None = None
+        self.progress_samples: list[tuple[float, int]] = []
 
         self._build_widgets()
         self._refresh_credentials_status()
@@ -138,8 +158,12 @@ class RescueApp(tk.Tk):
         self.host_var = tk.StringVar(value=self.config.host or '')
         host_entry = ttk.Entry(top, textvariable=self.host_var, width=80)
         host_entry.grid(row=1, column=1, sticky='ew', padx=4, pady=(4, 0))
+        self.connect_button = ttk.Button(
+            top, text='接続', command=self._start_connect
+        )
+        self.connect_button.grid(row=1, column=2, pady=(4, 0))
         ttk.Label(top, text='空欄 = SSDP で自動発見').grid(
-            row=1, column=2, columnspan=2, sticky='w', pady=(4, 0)
+            row=1, column=3, sticky='w', padx=(4, 0), pady=(4, 0)
         )
         self.status_var = tk.StringVar()
         ttk.Label(top, textvariable=self.status_var).grid(
@@ -157,7 +181,7 @@ class RescueApp(tk.Tk):
             buttons, text='選択した録画を救出', command=self._start_fetch
         )
         self.fetch_button.pack(side='left', padx=(6, 0))
-        self.server_var = tk.StringVar(value='サーバー: 未接続')
+        self.server_var = tk.StringVar(value='未接続')
         ttk.Label(buttons, textvariable=self.server_var).pack(side='left', padx=(12, 0))
 
         columns = ('title', 'date', 'channel', 'duration', 'size', 'copies')
@@ -215,22 +239,37 @@ class RescueApp(tk.Tk):
         self.log_text.insert('end', message + '\n')
         self.log_text.see('end')
 
-    def _current_config(self) -> rescue.Config:
+    def _display_config(self) -> rescue.Config:
+        """The config the entry fields currently describe.
+
+        This is the single source for path resolution: the placement
+        status and every action (connect / list / fetch) all derive the
+        credentials path from here, so what the status line judges is
+        always the file an action would actually use.
+        """
         path = self.credentials_var.get().strip()
         host = self.host_var.get().strip() or None
         credentials_changed = bool(path) and Path(path) != self.config.credentials
         if credentials_changed or host != self.config.host:
-            self.config = rescue.resolve_config(
+            return rescue.resolve_config(
                 credentials=path if path else None, host=host
             )
-            save_host(self.config, host)
-            self._refresh_credentials_status()
+        return self.config
+
+    def _current_config(self) -> rescue.Config:
+        resolved = self._display_config()
+        if resolved is not self.config:
+            self.config = resolved
+            save_host(self.config, self.config.host)
+        # Re-evaluate the placement display on every action: a file the
+        # user placed after launch (same path, so nothing "changed")
+        # must show up without restarting the GUI.
+        self._refresh_credentials_status()
         return self.config
 
     def _refresh_credentials_status(self) -> None:
         self.status_var.set(
-            f"配置状態: {credentials_status(self.config)}"
-            '  (状態はファイルの有無とサイズだけから判定し、値は読みません)'
+            f"配置状態: {credentials_status(self._display_config())}"
         )
 
     def _choose_credentials(self) -> None:
@@ -260,10 +299,45 @@ class RescueApp(tk.Tk):
             self._log(f'フォルダを開けませんでした: {error}')
 
     # ------------------------------------------------------------------
+    # connection check
+    # ------------------------------------------------------------------
+    def _start_connect(self) -> None:
+        if self.fetching or self.connecting:
+            return
+        config = self._current_config()
+        self.connecting = True
+        self.connect_button.config(state='disabled')
+        self.list_button.config(state='disabled')
+        self.fetch_button.config(state='disabled')
+        if config.host:
+            self.server_var.set(f'接続中… ({config.host})')
+            self._log(f'接続を確認しています… ({config.host} へ直接接続)')
+        else:
+            self.server_var.set('接続中… (SSDP で発見中)')
+            self._log('接続を確認しています… (SSDP で自動発見)')
+
+        def worker() -> None:
+            try:
+                server = rescue.probe_server(config)
+                self.events.put(('connected', server))
+            except SystemExit as error:
+                self.events.put(('connect_error', str(error)))
+            except Exception as error:  # surface anything unexpected
+                self.events.put(('connect_error', repr(error)))
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _finish_connect(self) -> None:
+        self.connecting = False
+        self.connect_button.config(state='normal')
+        self.list_button.config(state='normal')
+        self.fetch_button.config(state='normal')
+
+    # ------------------------------------------------------------------
     # listing
     # ------------------------------------------------------------------
     def _start_listing(self) -> None:
-        if self.fetching:
+        if self.fetching or self.connecting:
             return
         self.list_button.config(state='disabled')
         self._log('録画一覧を取得しています…')
@@ -284,7 +358,7 @@ class RescueApp(tk.Tk):
         self.listing = listing
         server = listing.get('server', {})
         self.server_var.set(
-            f"サーバー: {server.get('friendly_name', '?')} "
+            f"接続済み: {server.get('friendly_name', '?')} "
             f"({server.get('location', '')})"
         )
         for item in self.tree.get_children():
@@ -317,7 +391,7 @@ class RescueApp(tk.Tk):
     # fetch
     # ------------------------------------------------------------------
     def _start_fetch(self) -> None:
-        if self.fetching:
+        if self.fetching or self.connecting:
             return
         if self.listing is None:
             messagebox.showinfo('録画救出', '先に「録画一覧を取得」を実行してください')
@@ -362,17 +436,55 @@ class RescueApp(tk.Tk):
 
         threading.Thread(target=worker, daemon=True).start()
 
+    def _rate_text(self, now: float, size: int) -> str:
+        """Transfer rate suffix for the progress line.
+
+        The main figure is a moving average over the last few seconds
+        of .partial growth (instantaneous 300 ms deltas jitter too much
+        to read); the overall average since the fetch began follows in
+        parentheses. Rates are decimal MB/s, matching the figures in
+        the tool README (about 11 MB/s on a wired LAN).
+        """
+        window_start = now - 5.0
+        base = next(
+            (sample for sample in self.progress_samples if sample[0] >= window_start),
+            self.progress_samples[0] if self.progress_samples else None,
+        )
+        recent = None
+        if base is not None and now - base[0] >= 1.0 and size > base[1]:
+            recent = (size - base[1]) / (now - base[0]) / 1_000_000
+        overall = None
+        if (
+            self.fetch_started_at is not None
+            and now - self.fetch_started_at >= 1.0
+            and size > 0
+        ):
+            overall = size / (now - self.fetch_started_at) / 1_000_000
+        if recent is not None:
+            text = f' — {recent:.1f} MB/s'
+            if overall is not None and f'{overall:.1f}' != f'{recent:.1f}':
+                text += f' (平均 {overall:.1f} MB/s)'
+            return text
+        if overall is not None:
+            return f' — {overall:.1f} MB/s'
+        return ''
+
     def _poll_progress(self) -> None:
         if self.active_partial is not None and self.active_expected:
             try:
                 size = self.active_partial.stat().st_size
             except OSError:
                 size = 0
+            now = time.monotonic()
+            self.progress_samples.append((now, size))
+            cutoff = now - 10.0
+            while len(self.progress_samples) > 2 and self.progress_samples[0][0] < cutoff:
+                self.progress_samples.pop(0)
             percent = min(100.0, 100.0 * size / self.active_expected)
             self.progress['value'] = percent
             self.progress_var.set(
                 f'{format_bytes(size)} / {format_bytes(self.active_expected)}'
-                f' ({percent:.0f}%)'
+                f' ({percent:.0f}%){self._rate_text(now, size)}'
             )
         self.after(300, self._poll_progress)
 
@@ -429,6 +541,20 @@ class RescueApp(tk.Tk):
                 kind, payload = self.events.get_nowait()
                 if kind == 'log':
                     self._log(payload)
+                elif kind == 'connected':
+                    self._finish_connect()
+                    self.server_var.set(
+                        f"接続済み: {payload.get('friendly_name', '?')} "
+                        f"({payload.get('location', '')})"
+                    )
+                    self._log(
+                        f"接続できました: {payload.get('friendly_name', '?')} "
+                        f"({payload.get('location', '')})"
+                    )
+                elif kind == 'connect_error':
+                    self._finish_connect()
+                    self.server_var.set(f'未接続: {payload}')
+                    self._log(f'接続できませんでした: {payload}')
                 elif kind == 'listing':
                     self._show_listing(payload)
                     self.list_button.config(state='normal')
@@ -440,11 +566,15 @@ class RescueApp(tk.Tk):
                     partial, expected, title = payload
                     self.active_partial = partial
                     self.active_expected = expected
+                    self.fetch_started_at = time.monotonic()
+                    self.progress_samples = []
                     self.progress['value'] = 0
                     self.progress_var.set(f'救出中: {title}')
                 elif kind == 'fetch_end':
                     self.active_partial = None
                     self.active_expected = None
+                    self.fetch_started_at = None
+                    self.progress_samples = []
                 elif kind == 'fetch_all_done':
                     succeeded, total = payload
                     self.fetching = False
