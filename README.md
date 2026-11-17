@@ -44,3 +44,13 @@ DTCP-IP 救出経路は、tsukumijima 氏の [pydtcpip](https://github.com/tsuku
 - Sony のファームウェア本体、バイナリ、SPI フラッシュの内容は含まれません。解析対象の入手は各自の実機・公開ソースから。
 - 派生ツールは tools/ に収録します(現在は DTCP-IP 救出ツール [tools/dtcpip-rescue](tools/dtcpip-rescue/))。
 - nasne、PlayStation、B-CAS 等は各社の商標です。本プロジェクトは SIE、各社とは無関係です。
+
+## 支援について
+
+SonyNasne-DTCP は個人の趣味で開発しているフリーソフトです。
+もし「応援したい」と思っていただけたら、PayPay で寄付を受け付けています。
+
+- PayPay ID: markunr_m
+
+特典などは特に出せませんし、寄付の有無で機能や対応に差がつくこともありません。
+開発の励みになりますので、気が向いたらどうぞ。
