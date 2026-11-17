@@ -34,6 +34,10 @@ SIE(旧SCE)製ネットワークレコーダー **nasne CECH-ZNR2J** の **録�
 | [03_playback_path_and_oracle](docs/03_playback_path_and_oracle.md) | 再生経路と復号オラクル(Tp 経路の平文ステージング、実験 E1〜E4 の設計と E3 の実測) |
 | [04_open_questions](docs/04_open_questions.md) | 未確定事項と問いの棚卸し(本丸の問い、オラクル側の問い、副線の方針) |
 
+## 謝辞
+
+DTCP-IP 救出経路は、tsukumijima 氏の [pydtcpip](https://github.com/tsukumijima/pydtcpip) の実装と知見の上に成り立っています。[docs/32](docs/32_pydtcpip_survey.md) での評価と [docs/37](docs/37_pydtcpip_live_verification.md) での実機検証を経て、救出パイプライン ([docs/48](docs/48_dtcpip_rescue_pipeline.md)・[docs/49](docs/49_dtcpip_rescue_tool_and_windows.md)) の AKE と復号は pydtcpip をエンジンとして動いています。pydtcpip が公開されていなければ、この経路には到達できませんでした。深く感謝します。
+
 ## 対象・注意
 
 - 対象は、**自分で所有する実機と、自分で録画した録画のみ**です。

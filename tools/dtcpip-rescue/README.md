@@ -11,6 +11,8 @@ manifest に記録される。解析と検証の記録は
 [docs/48](../../docs/48_dtcpip_rescue_pipeline.md) と
 [docs/49](../../docs/49_dtcpip_rescue_tool_and_windows.md) を参照。
 
+このツールが成立したのは pydtcpip のおかげです。作者の tsukumijima 氏に感謝します。
+
 ## 鍵の分担 (重要)
 
 - **鍵は利用者本人が `credentials.env` にだけ配置する。** このファイル以外に
