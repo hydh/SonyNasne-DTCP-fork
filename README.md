@@ -24,6 +24,7 @@ SIE(旧SCE)製ネットワークレコーダー **nasne CECH-ZNR2J** の **録�
   - DTCP-IP 配信(通常再生)はチップ内閉域で、平文 TS はホストに出ない。一方、リモート視聴(Tp)経路は平文 TS がホストメモリにステージされる設計([docs/03](docs/03_playback_path_and_oracle.md))
   - 「復号に必要な鍵だけ実機から抜いて PC で復号する」形は、現時点の判定では**到達不能**(鍵がホストに存在しない設計)。ただし判定の根拠を疑う余地が残る間は副線として残す([docs/04](docs/04_open_questions.md))
   - 実機チップ自体を復号オラクルとして使う方式が本線。Tp 再生中の平文採取(E3)は初回実測まで進み、次はデバイス共有バッファ側の走査が残件
+  - **DTCP-IP 経由の救出経路は基本完成**(2026-11-17)。正規の資格情報ペアを本人が用意すれば、公式 FW の録画を AKE 経由で復号済み TS として取り出せる(DR・3倍とも実機で実証済み)。ツールは [tools/dtcpip-rescue](tools/dtcpip-rescue/)、記録は [docs/48](docs/48_dtcpip_rescue_pipeline.md)・[docs/49](docs/49_dtcpip_rescue_tool_and_windows.md)
 
 ## ドキュメント
 
@@ -39,5 +40,5 @@ SIE(旧SCE)製ネットワークレコーダー **nasne CECH-ZNR2J** の **録�
 
 - 対象は、**自分で所有する実機と、自分で録画した録画のみ**です。
 - Sony のファームウェア本体、バイナリ、SPI フラッシュの内容は含まれません。解析対象の入手は各自の実機・公開ソースから。
-- このリポジトリは記録置き場です。ツールや手順書は、まとまった段階で別途整理します。
+- 派生ツールは tools/ に収録します(現在は DTCP-IP 救出ツール [tools/dtcpip-rescue](tools/dtcpip-rescue/))。
 - nasne、PlayStation、B-CAS 等は各社の商標です。本プロジェクトは SIE、各社とは無関係です。
