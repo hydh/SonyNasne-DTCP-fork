@@ -22,6 +22,10 @@ Configuration (first match wins):
   data dir    : --data-dir    / $RESCUE_DATA_DIR    / directory of the credentials file
   output dir  : --out-dir     / $RESCUE_OUT_DIR     / <base>/out
   logs dir    : --logs-dir    / $RESCUE_LOGS_DIR    / <base>/logs
+  nasne host  : --host        / $RESCUE_HOST        / SSDP discovery
+                (manual registration: fetch the device description from
+                the given address directly, skipping multicast discovery,
+                so routed paths such as VPN / subnet routing also work)
   pydtcpip    : --pydtcpip-home / $PYDTCPIP_HOME    / a pydtcpip checkout
                 containing .venv (bin/ on POSIX, Scripts/ on Windows);
                 falls back to a pydtcpip importable by this interpreter
@@ -61,6 +65,7 @@ class Config:
     out_dir: Path
     logs_dir: Path
     pydtcpip_home: Path | None
+    host: str | None = None
 
     @property
     def listings_dir(self) -> Path:
@@ -86,6 +91,7 @@ def resolve_config(
     out_dir: str | None = None,
     logs_dir: str | None = None,
     pydtcpip_home: str | None = None,
+    host: str | None = None,
 ) -> Config:
     """Resolve all paths from explicit values, environment, and defaults."""
     base = LEGACY_ROOT if LEGACY_ROOT.is_dir() else TOOL_DIR
@@ -114,12 +120,14 @@ def resolve_config(
         or _path_from(os.environ.get('PYDTCPIP_HOME'))
         or (LEGACY_PYDTCPIP_HOME if LEGACY_PYDTCPIP_HOME.is_dir() else None)
     )
+    host_value = host or os.environ.get('RESCUE_HOST') or None
     return Config(
         credentials=credentials_path,
         data_dir=data_path,
         out_dir=out_path,
         logs_dir=logs_path,
         pydtcpip_home=home,
+        host=host_value,
     )
 
 
@@ -208,8 +216,11 @@ def run_listing(config: Config) -> dict:
             'or install pydtcpip for this interpreter.'
         )
     config.listings_dir.mkdir(parents=True, exist_ok=True)
+    command = [str(python), str(LIST_SCRIPT)]
+    if config.host:
+        command += ['--host', config.host]
     proc = subprocess.run(
-        [str(python), str(LIST_SCRIPT)],
+        command,
         capture_output=True,
         encoding='utf-8',
         errors='replace',
@@ -361,6 +372,11 @@ def add_common_options(parser: argparse.ArgumentParser) -> None:
     parser.add_argument('--out-dir', help='Output directory for rescued files')
     parser.add_argument('--logs-dir', help='Directory for run logs')
     parser.add_argument('--pydtcpip-home', help='pydtcpip checkout containing .venv')
+    parser.add_argument(
+        '--host',
+        help='Recorder address for manual registration (skips SSDP discovery): '
+        'a host name or IP, host:port, or a full device description URL',
+    )
 
 
 def main() -> int:
@@ -400,6 +416,7 @@ def main() -> int:
         out_dir=args.out_dir,
         logs_dir=args.logs_dir,
         pydtcpip_home=args.pydtcpip_home,
+        host=args.host,
     )
 
     if args.command == 'list':

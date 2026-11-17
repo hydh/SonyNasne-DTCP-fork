@@ -5,16 +5,23 @@ Uses pydtcpip's DLNA stack (SSDP discovery + ContentDirectory Browse) and
 prints a JSON listing: title, ID, resources (res URL / protocolInfo / size),
 and protection info (remaining copy count from av:COGCount, Move support).
 
+With `--host`, discovery is skipped (manual registration): the device
+description is fetched directly from the given recorder address and only
+the Browse step runs over unicast HTTP. This works across routed paths
+(VPN, subnet routing) where SSDP multicast does not reach.
+
 Run with pydtcpip's venv Python so that `pydtcpip` is importable:
-    <pydtcpip>/.venv/bin/python list_recordings.py
+    <pydtcpip>/.venv/bin/python list_recordings.py [--host 192.168.11.129]
 """
 
 import argparse
 import asyncio
 import json
+import os
 import sys
 
 from pydtcpip.dlna.client import DLNAClient
+from pydtcpip.errors import DLNAError
 from pydtcpip.models import Container, Recording
 
 
@@ -97,18 +104,43 @@ def recording_dump(recording: Recording) -> dict:
     }
 
 
-async def run(timeout: float) -> int:
+def location_for_host(host: str) -> str:
+    """Device description URL for a manually specified recorder.
+
+    Accepts a bare host (`192.168.11.129`, which gets the nasne DMS port
+    58888), a `host:port` pair, or a full description URL.
+    """
+    if host.startswith(('http://', 'https://')):
+        return host
+    if ':' in host:
+        return f'http://{host}/'
+    return f'http://{host}:58888/'
+
+
+async def run(timeout: float, host: str | None) -> int:
     async with DLNAClient() as dlna:
-        servers = await dlna.discover(timeout=timeout, port=57000)
-        if not servers:
-            print('no media servers found', file=sys.stderr)
-            return 1
-        server = next((s for s in servers if s.profile.name == 'sie_nasne'), None)
-        if server is None:
-            if len(servers) != 1:
-                print('multiple servers found, none matched the sie_nasne profile', file=sys.stderr)
+        if host:
+            # Manual registration: fetch the description directly instead
+            # of SSDP discovery (multicast does not cross routed paths).
+            try:
+                server = await dlna.get_server(location_for_host(host))
+            except DLNAError as error:
+                print(f'could not reach the recorder at {host}: {error}', file=sys.stderr)
                 return 1
-            server = servers[0]
+        else:
+            servers = await dlna.discover(timeout=timeout, port=57000)
+            if not servers:
+                print('no media servers found', file=sys.stderr)
+                return 1
+            server = next((s for s in servers if s.profile.name == 'sie_nasne'), None)
+            if server is None:
+                if len(servers) != 1:
+                    print(
+                        'multiple servers found, none matched the sie_nasne profile',
+                        file=sys.stderr,
+                    )
+                    return 1
+                server = servers[0]
         recordings = await collect_recordings(server)
         result = {
             'server': {
@@ -134,8 +166,15 @@ def main() -> int:
         pass
     parser = argparse.ArgumentParser(description='List recordings on the nasne (no credentials).')
     parser.add_argument('--timeout', type=float, default=5.0, help='SSDP discovery timeout in seconds')
+    parser.add_argument(
+        '--host',
+        default=os.environ.get('RESCUE_HOST'),
+        help='Recorder address for manual registration (skips SSDP discovery): '
+        'a host name or IP (port 58888 is assumed), host:port, or a full '
+        'device description URL. Defaults to $RESCUE_HOST.',
+    )
     args = parser.parse_args()
-    return asyncio.run(run(args.timeout))
+    return asyncio.run(run(args.timeout, args.host))
 
 
 if __name__ == '__main__':

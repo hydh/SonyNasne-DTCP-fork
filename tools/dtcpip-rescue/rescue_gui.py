@@ -7,6 +7,8 @@ Features (kept minimal on purpose):
   - progress bar (watches the .partial file size) and a log pane
   - manifest view with SHA-256 re-verification
   - credentials.env path display and placement status
+  - manual recorder address (skips SSDP discovery, for routed paths
+    such as VPN / subnet routing); the value is kept between runs
 
 The GUI follows the same rule as the CLI: it NEVER reads, prints, or
 verifies credential values. Placement status is inferred from file
@@ -29,6 +31,33 @@ import rescue  # noqa: E402
 
 TOOL_DIR = Path(__file__).resolve().parent
 TEMPLATE = TOOL_DIR / 'credentials.env.example'
+SETTINGS_FILE = 'gui_settings.json'
+
+
+def load_saved_host(config: rescue.Config) -> str | None:
+    """Recorder address saved by a previous GUI run.
+
+    The settings file is runtime state kept in the data directory
+    (next to pydtcpip's srm.bin); it holds no credentials.
+    """
+    try:
+        data = json.loads((config.data_dir / SETTINGS_FILE).read_text(encoding='utf-8'))
+    except Exception:
+        return None
+    host = data.get('host')
+    return host if isinstance(host, str) and host else None
+
+
+def save_host(config: rescue.Config, host: str | None) -> None:
+    """Persist the manual recorder address for the next run."""
+    try:
+        config.data_dir.mkdir(parents=True, exist_ok=True)
+        (config.data_dir / SETTINGS_FILE).write_text(
+            json.dumps({'host': host or ''}, ensure_ascii=False) + '\n',
+            encoding='utf-8',
+        )
+    except Exception:
+        pass  # persistence is a convenience; never block the workflow
 
 
 def credentials_status(config: rescue.Config) -> str:
@@ -67,6 +96,10 @@ class RescueApp(tk.Tk):
         self.title('DTCP-IP 録画救出ツール')
         self.geometry('980x680')
         self.config = rescue.resolve_config()
+        if self.config.host is None:
+            saved_host = load_saved_host(self.config)
+            if saved_host:
+                self.config = rescue.resolve_config(host=saved_host)
         self.events: queue.Queue = queue.Queue()
         self.listing: dict | None = None
         self.recordings: dict[str, dict] = {}
@@ -99,9 +132,18 @@ class RescueApp(tk.Tk):
         ttk.Button(top, text='フォルダを開く', command=self._open_credentials_folder).grid(
             row=0, column=3, padx=(4, 0)
         )
+        ttk.Label(top, text='nasne アドレス (手動指定):').grid(
+            row=1, column=0, sticky='w', pady=(4, 0)
+        )
+        self.host_var = tk.StringVar(value=self.config.host or '')
+        host_entry = ttk.Entry(top, textvariable=self.host_var, width=80)
+        host_entry.grid(row=1, column=1, sticky='ew', padx=4, pady=(4, 0))
+        ttk.Label(top, text='空欄 = SSDP で自動発見').grid(
+            row=1, column=2, columnspan=2, sticky='w', pady=(4, 0)
+        )
         self.status_var = tk.StringVar()
         ttk.Label(top, textvariable=self.status_var).grid(
-            row=1, column=0, columnspan=4, sticky='w', pady=(2, 0)
+            row=2, column=0, columnspan=4, sticky='w', pady=(2, 0)
         )
         top.columnconfigure(1, weight=1)
 
@@ -175,8 +217,13 @@ class RescueApp(tk.Tk):
 
     def _current_config(self) -> rescue.Config:
         path = self.credentials_var.get().strip()
-        if path and Path(path) != self.config.credentials:
-            self.config = rescue.resolve_config(credentials=path)
+        host = self.host_var.get().strip() or None
+        credentials_changed = bool(path) and Path(path) != self.config.credentials
+        if credentials_changed or host != self.config.host:
+            self.config = rescue.resolve_config(
+                credentials=path if path else None, host=host
+            )
+            save_host(self.config, host)
             self._refresh_credentials_status()
         return self.config
 
@@ -194,7 +241,9 @@ class RescueApp(tk.Tk):
         )
         if chosen:
             self.credentials_var.set(chosen)
-            self.config = rescue.resolve_config(credentials=chosen)
+            self.config = rescue.resolve_config(
+                credentials=chosen, host=self.host_var.get().strip() or None
+            )
             self._refresh_credentials_status()
             self._log(f'資格情報ファイルのパスを変更: {chosen}')
 
