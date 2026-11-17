@@ -1,0 +1,20 @@
+name: 質問・調査の共有
+description: 使い方の質問や、解析・調査で分かったことの共有
+title: "[質問] "
+labels: ["question"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ありがとうございます。質問でも、調べたことの共有でも歓迎です。
+        **鍵や資格情報の値そのものは書かないでください**(構造・形式・ハッシュまでの共有でお願いします)。
+  - type: textarea
+    id: content
+    attributes:
+      label: 内容
+    validations: {required: true}
+  - type: textarea
+    id: basis
+    attributes:
+      label: 環境・根拠(あれば)
+      description: 調査の共有の場合は、対象の版・手順・ログなど、根拠が分かる情報を書いてください

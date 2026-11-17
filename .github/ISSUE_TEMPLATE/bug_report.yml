@@ -1,0 +1,42 @@
+name: バグ報告(ツールがうまく動かない)
+description: 救出ツール(tools/dtcpip-rescue)やドキュメントの不具合を報告する
+title: "[バグ] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ありがとうございます。分かる範囲で大丈夫です。
+        **資格情報(証明書・鍵の内容)、MAC・IP アドレス、HDD のシリアルは書かないでください。** credentials.env の中身は貼らないでください。
+  - type: dropdown
+    id: target
+    attributes:
+      label: 対象
+      options:
+        - 救出ツール(CLI)
+        - 救出ツール(GUI)
+        - ドキュメント(README / docs)
+        - その他
+    validations: {required: true}
+  - type: input
+    id: os
+    attributes:
+      label: OS
+      placeholder: "例: Windows 11 / macOS 26 / Debian 13"
+    validations: {required: true}
+  - type: input
+    id: versions
+    attributes:
+      label: Python と pydtcpip の版
+      placeholder: "例: Python 3.13 / pydtcpip 0.1.0(分からなければ空欄でよい)"
+  - type: input
+    id: firmware
+    attributes:
+      label: nasne の型番とファームウェア
+      placeholder: "例: CECH-ZNR2J / FW 2.60(分からなければ空欄でよい)"
+  - type: textarea
+    id: details
+    attributes:
+      label: 起きたこと
+      description: 実行したコマンドと、表示されたエラー(資格情報そのものは除いてください)
+    validations: {required: true}

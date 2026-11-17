@@ -1,0 +1,50 @@
+name: 救出レポート(取れた・取れなかった)
+description: 自分の環境で録画の救出を試した結果を報告する(うまくいった場合も歓迎)
+title: "[検証] "
+labels: ["verification"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ありがとうございます。**資格情報(証明書・鍵の内容)、MAC・IP アドレス、HDD のシリアルは書かないでください。**
+  - type: input
+    id: model
+    attributes:
+      label: nasne の型番とファームウェア
+      placeholder: "例: CECH-ZNR2J / FW 2.60(分からなければ空欄でよい)"
+  - type: dropdown
+    id: quality
+    attributes:
+      label: 試した画質
+      multiple: true
+      options:
+        - DR
+        - 3倍
+    validations: {required: true}
+  - type: dropdown
+    id: result
+    attributes:
+      label: 結果
+      options:
+        - 取れた
+        - 一部だけ取れた
+        - 取れなかった
+    validations: {required: true}
+  - type: dropdown
+    id: ui
+    attributes:
+      label: 使ったのは
+      options:
+        - GUI
+        - CLI
+        - 両方
+  - type: input
+    id: env
+    attributes:
+      label: 実行環境(OS・Python の版)
+      placeholder: "例: Windows 11 / Python 3.13、macOS 26 / Python 3.14"
+  - type: textarea
+    id: details
+    attributes:
+      label: 詳しい状況
+      description: 転送速度、どこで止まったか、表示されたエラーなど(資格情報そのものは除いてください)
