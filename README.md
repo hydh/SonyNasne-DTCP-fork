@@ -16,15 +16,13 @@ SIE(旧SCE)製ネットワークレコーダー **nasne CECH-ZNR2J** の **録�
 
 **鍵の値そのものは書きません**(存在・形式・所在・導出手順の構造まで)。個体を特定できる値(MAC アドレス、機器 ID の実値、HDD のシリアル等)も書きません。
 
-## 現状
+## 分かっていること
 
-- **非公開で開始**(2026-11)。記録がまとまった段階で公開する予定です。
-- 現在の到達点(詳細は各 docs):
-  - 録画保存の実形態は **SECUREDTS による復号 + GENERIC-AES セッション(モード `0x4000`)による暗号化**。実効鍵は、ホストが渡す control word をファームウェアが内部状態で解決したもので、**鍵そのものはホスト側のどこにも存在しない**([docs/02](docs/02_dat_encryption_model.md))
-  - DTCP-IP 配信(通常再生)はチップ内閉域で、平文 TS はホストに出ない。一方、リモート視聴(Tp)経路は平文 TS がホストメモリにステージされる設計([docs/03](docs/03_playback_path_and_oracle.md))
-  - 「復号に必要な鍵だけ実機から抜いて PC で復号する」形は、現時点の判定では**到達不能**(鍵がホストに存在しない設計)。ただし判定の根拠を疑う余地が残る間は副線として残す([docs/04](docs/04_open_questions.md))
-  - 実機チップ自体を復号オラクルとして使う方式が本線。Tp 再生中の平文採取(E3)は初回実測まで進み、次はデバイス共有バッファ側の走査が残件
-  - **DTCP-IP 経由の救出経路は基本完成**(2026-11-17)。正規の資格情報ペアを本人が用意すれば、公式 FW の録画を AKE 経由で復号済み TS として取り出せる(DR・3倍とも実機で実証済み)。ツールは [tools/dtcpip-rescue](tools/dtcpip-rescue/)、記録は [docs/48](docs/48_dtcpip_rescue_pipeline.md)・[docs/49](docs/49_dtcpip_rescue_tool_and_windows.md)
+- 録画保存の実形態は **SECUREDTS による復号 + GENERIC-AES セッション(モード `0x4000`)による暗号化**。実効鍵は、ホストが渡す control word をファームウェアが内部状態で解決したもので、**鍵そのものはホスト側のどこにも存在しない**([docs/02](docs/02_dat_encryption_model.md))
+- DTCP-IP 配信(通常再生)はチップ内閉域で、平文 TS はホストに出ない。一方、リモート視聴(Tp)経路は平文 TS がホストメモリにステージされる設計([docs/03](docs/03_playback_path_and_oracle.md))
+- 「復号に必要な鍵だけ実機から抜いて PC で復号する」形は、鍵がホストに存在しない設計のため成立しない。判定の根拠と残る未確定事項は [docs/04](docs/04_open_questions.md) にある
+- `.dat` 側の解析(実機チップを復号オラクルとして使う方式を含む)の記録は docs/02〜04 が正本
+- 既存録画の取り出しには **DTCP-IP 経由の経路**が使える。正規の資格情報ペアを用意すれば、公式 FW の録画を AKE 経由で復号済み TS として取得できる(DR 録画・3倍録画のどちらも対象)。ツールは [tools/dtcpip-rescue](tools/dtcpip-rescue/)、記録は [docs/48](docs/48_dtcpip_rescue_pipeline.md)・[docs/49](docs/49_dtcpip_rescue_tool_and_windows.md)
 
 ## ドキュメント
 

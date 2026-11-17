@@ -5,10 +5,11 @@
 [pydtcpip](https://github.com/tsukumijima/pydtcpip) が担い、このツールは
 列挙・転送ドライバ・保存・検証と、Tkinter 製の簡易 GUI を提供する。
 
-**状態: 基本完成。** DR 録画・3倍録画のどちらも実機で AKE 完走・復号・
-TS 検証 (サイズ一致、MPEG-TTS 同期バイト全数正常、SHA-256 一致) まで
-実証済み。経緯と検証の詳細は [docs/48](../../docs/48_dtcpip_rescue_pipeline.md)
-と [docs/49](../../docs/49_dtcpip_rescue_tool_and_windows.md) を参照。
+DR 録画・3倍録画のどちらも、この経路で復号済み TS として取得できる。
+取得した TS はサイズ・MPEG-TTS の同期バイト・SHA-256 で検証され、
+manifest に記録される。解析と検証の記録は
+[docs/48](../../docs/48_dtcpip_rescue_pipeline.md) と
+[docs/49](../../docs/49_dtcpip_rescue_tool_and_windows.md) を参照。
 
 ## 鍵の分担 (重要)
 
@@ -75,5 +76,114 @@ cd pydtcpip
 uv sync            # .venv ができる (uv が無い場合は venv + pip でも可)
 ```
 
-ツー
-...[truncated 4377 chars]
+ツールへの教え方は、引数 → 環境変数 → 既定値の順で決まる。
+
+| 項目 | 引数 | 環境変数 | 既定値 |
+|---|---|---|---|
+| 資格情報ファイル | `--credentials` | `RESCUE_CREDENTIALS` | `<base>/data/credentials.env` |
+| データディレクトリ (srm.bin の置き場) | `--data-dir` | `RESCUE_DATA_DIR` | 資格情報ファイルのあるディレクトリ |
+| 出力先 | `--out-dir` | `RESCUE_OUT_DIR` | `<base>/out` |
+| ログ出力先 | `--logs-dir` | `RESCUE_LOGS_DIR` | `<base>/logs` |
+| pydtcpip の場所 | `--pydtcpip-home` | `PYDTCPIP_HOME` | `.venv` を含む pydtcpip のチェックアウト (POSIX は `bin/`、Windows は `Scripts\` のレイアウトに対応)。見つからない場合は PATH 上の `pydtcpip` コマンド、または実行中の Python から import できる pydtcpip を使う |
+
+`<base>` は、従来の作業領域レイアウトが存在するマシンではそちら
+(互換のための既定)、なければこのツール自身のディレクトリ。
+
+資格情報ファイルは、空テンプレート `credentials.env.example` を
+`data/credentials.env` にコピーし、利用者本人が値を書く
+(変数は `PYDTCPIP_CERTIFICATE` と `PYDTCPIP_PRIVATE_KEY`、値は hex 文字列)。
+ファイルのパーミッションは POSIX では 600、Windows では所有者のみに制限する。
+
+## CLI の使い方
+
+```bash
+cd tools/dtcpip-rescue
+
+# 録画一覧 (資格情報なしで動く)
+python3 rescue.py list
+
+# 1 件だけ取得 (ID は list の出力の content_id)
+python3 rescue.py fetch --id <content_id>
+
+# 全件取得
+python3 rescue.py fetch-all
+```
+
+- 既に manifest にある録画はスキップされる。再取得は `--force`。
+- `--timeout <秒>` で 1 件あたりの転送タイムアウトを指定できる (0 = 無制限)。
+- 取得結果の検証は `out/SHA256SUMS.txt` で行える:
+
+```bash
+cd out && sha256sum -c SHA256SUMS.txt
+```
+
+## GUI の使い方
+
+GUI は CLI と同じ処理を画面から実行するためのもので、追加の依存はない
+(Python 標準の Tkinter のみ)。前提 (pydtcpip の用意と資格情報ファイルの配置)
+は CLI と共通。
+
+### 起動
+
+```bash
+cd tools/dtcpip-rescue
+# Linux / macOS
+python3 rescue_gui.py
+# Windows
+py rescue_gui.py
+```
+
+- Linux ではディストリビューションによって `python3-tk` パッケージが
+  別途必要な場合がある。
+- macOS でも同じコードで動作するが、実機での動作確認は行っていない。
+
+### 画面の構成
+
+- **資格情報ファイルの欄**: `credentials.env` のパス表示と、配置状態の表示。
+  「変更…」でファイルを選んでパスを切り替え、「フォルダを開く」でそのフォルダを
+  エクスプローラ / Finder / ファイルマネージャで開く。
+- **「録画一覧を取得」ボタン**: nasne を発見し、録画一覧を表に表示する
+  (資格情報は不要)。接続できるとサーバー名がボタンの右に表示される。
+- **録画一覧の表**: タイトル / 日時 / チャンネル / 長さ / サイズ / 残コピー。
+- **「選択した録画を救出」ボタン**: 表で選択した録画 (複数選択可) を取得する。
+- **進捗バー**: 転送中、取得済みサイズ / 全体サイズとパーセントを表示する。
+- **救出済み (manifest) の表**: 保存済みの一覧 (タイトル / ファイル / サイズ /
+  SHA-256 先頭 16 桁 / 検証結果)。「ハッシュ検証」ボタンで保存済みファイルの
+  SHA-256 を manifest と再照合する。
+- **ログ欄**: 処理の進行と結果が表示される。
+
+### 操作の流れ
+
+1. 起動したら、まず上部の **配置状態** を確認する。未配置の場合は、
+   表示されているパスの場所に `credentials.env` を置く
+   (「フォルダを開く」がそのフォルダを開く)。置き場所を変えたい場合は
+   「変更…」でファイルを選ぶ。
+2. 「録画一覧を取得」を押す。
+3. 表から救出したい録画を選び、「選択した録画を救出」を押す。
+   進捗バーとログで進行を確認する。
+4. 完了すると manifest の表に結果が追加される。必要なら「ハッシュ検証」で
+   保存内容を再確認する。
+
+### 配置状態の見方
+
+配置状態は、ファイルの有無とサイズだけから判定している (値は読まない)。
+
+- `未配置 (ファイルがありません)` — 指定パスにファイルがない。
+- `未配置 (空テンプレートのまま)` — ファイルはあるが空テンプレートと同等。
+- `配置済み` — テンプレートより大きいファイルがある (サイズからの推定)。
+
+### 注意点
+
+- GUI も CLI と同じく、鍵の値を読まない・出さない・検証しない。
+- 取得の実行中は、一覧取得と取得のボタンが無効になる。
+- 既に manifest にある録画はスキップされる。再取得したい場合は CLI の
+  `fetch --force` を使う。
+
+## Windows での注意
+
+- コンソールが cp932 の環境でもタイトル等が文字化けしないよう、ツールは
+  pydtcpip の子プロセスへ `PYTHONUTF8=1` を渡して UTF-8 で処理させる。
+- PowerShell 5.1 のリダイレクトは UTF-16LE で書かれるため、`list` の JSON を
+  ファイルに残す場合はエンコーディングに注意する
+  (例: `Out-File -Encoding utf8` を使う)。
+- pydtcpip の venv は Windows の `Scripts\` レイアウトに対応している。
