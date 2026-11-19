@@ -29,6 +29,7 @@ import sys
 import threading
 import time
 import tkinter as tk
+import unicodedata
 from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 
@@ -105,6 +106,107 @@ def original_size(recording: dict) -> int | None:
         if resource.get('is_original'):
             return resource.get('cleartext_size') or resource.get('size')
     return None
+
+
+def text_key(value: object) -> str | None:
+    """Sort key for text: width-normalised and case-insensitive.
+
+    Ordering is by character code (no reading-based kana order). Empty
+    values return None so they are placed last in either direction.
+    """
+    if value is None:
+        return None
+    text = unicodedata.normalize('NFKC', str(value)).casefold()
+    return text or None
+
+
+def number_key(value: object) -> int | float | None:
+    """Sort key for numbers; anything that is not a number is "no value"."""
+    if isinstance(value, bool) or value is None:
+        return None
+    if isinstance(value, (int, float)):
+        return value
+    try:
+        return int(str(value).strip())
+    except ValueError:
+        return None
+
+
+def duration_key(value: object) -> int | None:
+    """Seconds from an ``HH:MM:SS`` string (``MM:SS`` is accepted too)."""
+    if not isinstance(value, str) or not value.strip():
+        return None
+    try:
+        parts = [int(part) for part in value.strip().split(':')]
+    except ValueError:
+        return None
+    if not 2 <= len(parts) <= 3 or any(part < 0 for part in parts):
+        return None
+    seconds = 0
+    for part in parts:
+        seconds = seconds * 60 + part
+    return seconds
+
+
+class SortableTree:
+    """Click-the-header sorting for a ttk.Treeview.
+
+    Cells hold display strings (``"1.5 GiB"``), which do not sort
+    meaningfully, so each row also gets raw sort keys via ``set_keys``.
+    Rows are reordered with ``Treeview.move`` -- never deleted and
+    re-created -- so item ids and the current selection are kept.
+    Rows whose key is None always go last, in either direction. The
+    chosen column / direction survive a rebuild of the table: call
+    ``clear`` before re-inserting rows and ``apply`` afterwards.
+    """
+
+    def __init__(
+        self,
+        tree: ttk.Treeview,
+        labels: dict[str, str],
+        column: str | None = None,
+        reverse: bool = False,
+    ) -> None:
+        self.tree = tree
+        self.labels = labels
+        self.column = column
+        self.reverse = reverse
+        self.keys: dict[str, dict[str, object]] = {}
+        for name in labels:
+            tree.heading(name, command=lambda name=name: self.sort_by(name))
+        self._update_headings()
+
+    def clear(self) -> None:
+        self.keys.clear()
+
+    def set_keys(self, iid: str, keys: dict[str, object]) -> None:
+        self.keys[iid] = keys
+
+    def sort_by(self, column: str) -> None:
+        """Header click: same column toggles direction, a new one starts ascending."""
+        if column == self.column:
+            self.reverse = not self.reverse
+        else:
+            self.column = column
+            self.reverse = False
+        self.apply()
+
+    def apply(self) -> None:
+        if self.column is not None:
+            column = self.column
+            iids = list(self.tree.get_children(''))
+            present = [i for i in iids if self.keys.get(i, {}).get(column) is not None]
+            missing = [i for i in iids if self.keys.get(i, {}).get(column) is None]
+            present.sort(key=lambda i: self.keys[i][column], reverse=self.reverse)
+            for index, iid in enumerate(present + missing):
+                self.tree.move(iid, '', index)
+        self._update_headings()
+
+    def _update_headings(self) -> None:
+        for name, label in self.labels.items():
+            if name == self.column:
+                label += ' ▼' if self.reverse else ' ▲'
+            self.tree.heading(name, text=label)
 
 
 class RescueApp(tk.Tk):
@@ -186,6 +288,7 @@ class RescueApp(tk.Tk):
 
         columns = ('title', 'date', 'channel', 'duration', 'size', 'copies')
         self.tree = ttk.Treeview(self, columns=columns, show='headings', height=10)
+        listing_labels: dict[str, str] = {}
         for column, text, width in (
             ('title', 'タイトル', 380),
             ('date', '日時', 150),
@@ -194,8 +297,12 @@ class RescueApp(tk.Tk):
             ('size', 'サイズ', 90),
             ('copies', '残コピー', 60),
         ):
-            self.tree.heading(column, text=text)
+            listing_labels[column] = text
             self.tree.column(column, width=width, anchor='w')
+        # Initial order: newest recording first.
+        self.tree_sorter = SortableTree(
+            self.tree, listing_labels, column='date', reverse=True
+        )
         self.tree.pack(fill='both', expand=True, padx=8)
 
         progress_frame = ttk.Frame(self, padding=(8, 4))
@@ -213,6 +320,7 @@ class RescueApp(tk.Tk):
         self.mtree = ttk.Treeview(
             manifest_frame, columns=m_columns, show='headings', height=6
         )
+        manifest_labels: dict[str, str] = {}
         for column, text, width in (
             ('mtitle', 'タイトル', 300),
             ('mfile', 'ファイル', 260),
@@ -220,8 +328,10 @@ class RescueApp(tk.Tk):
             ('msha', 'SHA-256 (先頭16桁)', 130),
             ('mverify', '検証', 60),
         ):
-            self.mtree.heading(column, text=text)
+            manifest_labels[column] = text
             self.mtree.column(column, width=width, anchor='w')
+        # No initial sort: keep the manifest's own (rescue) order.
+        self.mtree_sorter = SortableTree(self.mtree, manifest_labels)
         self.mtree.pack(side='left', fill='both', expand=True)
         ttk.Button(
             manifest_frame, text='ハッシュ検証', command=self._start_verify
@@ -363,6 +473,7 @@ class RescueApp(tk.Tk):
         )
         for item in self.tree.get_children():
             self.tree.delete(item)
+        self.tree_sorter.clear()
         self.recordings.clear()
         for recording in listing.get('recordings', []):
             content_id = recording.get('content_id') or recording['id']
@@ -385,6 +496,22 @@ class RescueApp(tk.Tk):
                     copies_text,
                 ),
             )
+            self.tree_sorter.set_keys(
+                content_id,
+                {
+                    'title': text_key(recording.get('title')),
+                    'date': date or None,
+                    'channel': text_key(recording.get('channel_name')),
+                    'duration': duration_key(recording.get('duration')),
+                    'size': number_key(original_size(recording)),
+                    'copies': (
+                        number_key(copies.get('value'))
+                        if copies.get('status') == 'known'
+                        else None
+                    ),
+                },
+            )
+        self.tree_sorter.apply()
         self._log(f"録画 {len(self.recordings)} 件を取得しました")
 
     # ------------------------------------------------------------------
@@ -494,6 +621,7 @@ class RescueApp(tk.Tk):
     def _refresh_manifest(self, verify_results: dict[str, str] | None = None) -> None:
         for item in self.mtree.get_children():
             self.mtree.delete(item)
+        self.mtree_sorter.clear()
         try:
             entries = rescue.read_manifest(self.config)
         except Exception as error:
@@ -513,6 +641,17 @@ class RescueApp(tk.Tk):
                     result,
                 ),
             )
+            self.mtree_sorter.set_keys(
+                entry['id'],
+                {
+                    'mtitle': text_key(entry.get('title')),
+                    'mfile': text_key(entry.get('file')),
+                    'mbytes': number_key(entry.get('bytes')),
+                    'msha': text_key(entry.get('sha256')),
+                    'mverify': text_key(result),
+                },
+            )
+        self.mtree_sorter.apply()
 
     def _start_verify(self) -> None:
         config = self.config
