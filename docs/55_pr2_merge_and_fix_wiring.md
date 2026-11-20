@@ -62,7 +62,7 @@
 
 ## 4. お礼コメント
 
-- PR #2 に投稿した: (URL は投稿後に追記)
+- PR #2 に投稿した: https://github.com/mar1mo-41414/SonyNasne-DTCP/pull/2#issuecomment-7027227660 (検証内容と、選択式で組み込んだ旨を含む)
 
 ## 5. 残件・注記
 
